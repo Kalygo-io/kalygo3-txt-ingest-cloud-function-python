@@ -109,7 +109,7 @@ gcloud functions deploy process-txt-ingest-topic-message \
 ### Deploy with Environment Variables (if needed)
 
 ```bash
-gcloud functions deploy process-txt-ingest-topic-message \
+gcloud functions deploy process-txt-ingest-topic-message-python \
   --gen2 \
   --runtime=python311 \
   --region=us-east1 \
