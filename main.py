@@ -3,7 +3,7 @@ import json
 import functions_framework
 from flask import Request
 from cloudevents.http import CloudEvent
-from helpers.gcs import download_file_from_gcs, file_exists_in_gcs
+from helpers.gcs import download_file_from_gcs, file_exists_in_gcs, get_storage_instance_for_account
 from helpers.text_processor import process_text_file
 from helpers.pinecone_helper import upsert_vectors, ProcessingResult
 from helpers.get_secret import get_secret
@@ -45,16 +45,25 @@ def _process_message(message: str, attributes: dict) -> ProcessingResult:
     # Check if JWT is provided
     if not jwt:
         raise ValueError("JWT token is required for embedding API calls")
-    
+
+    # Resolve the account's own GCS credentials to download from its bucket.
+    account_id_for_gcs = parsed_message.get("account_id")
+    if account_id_for_gcs is None and user_id:
+        try:
+            account_id_for_gcs = int(user_id)
+        except (TypeError, ValueError):
+            account_id_for_gcs = None
+    account_storage_client = get_storage_instance_for_account(account_id_for_gcs)
+
     # Step 1: Download file from GCS
     print(f"Step 1: Downloading file from GCS: gs://{gcs_bucket}/{gcs_file_path}")
-    
+
     # Check if file exists first
-    file_exists = file_exists_in_gcs(gcs_bucket, gcs_file_path)
+    file_exists = file_exists_in_gcs(gcs_bucket, gcs_file_path, account_storage_client)
     if not file_exists:
         raise ValueError(f"File does not exist in GCS: gs://{gcs_bucket}/{gcs_file_path}")
-    
-    file_content = download_file_from_gcs(gcs_bucket, gcs_file_path)
+
+    file_content = download_file_from_gcs(gcs_bucket, gcs_file_path, account_storage_client)
     
     if not file_content.strip():
         raise ValueError("File is empty")
@@ -69,7 +78,9 @@ def _process_message(message: str, attributes: dict) -> ProcessingResult:
     text_result = process_text_file(
         file_content,
         filename,
-        jwt
+        jwt,
+        gcs_bucket=gcs_bucket,
+        gcs_file_path=gcs_file_path
     )
     vectors = text_result["vectors"]
     successful_rows = text_result["successful_chunks"]

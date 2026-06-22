@@ -150,7 +150,9 @@ def generate_embedding_for_chunk(
     chunk_index: int,
     filename: str,
     jwt: str,
-    file_metadata: Dict[str, str] = None
+    file_metadata: Dict[str, str] = None,
+    gcs_bucket: str = None,
+    gcs_file_path: str = None
 ) -> VectorData | None:
     """
     Generate embedding for a single chunk and prepare vector data for storage.
@@ -190,7 +192,16 @@ def generate_embedding_for_chunk(
             "chunkNumber": chunk_index + 1,
             "totalChunks": 0  # Will be set later
         }
-        
+
+        # Provider-agnostic pointer back to the original source document
+        # (Pinecone rejects nulls, so only set keys we actually have).
+        if gcs_bucket or gcs_file_path:
+            metadata["storage_provider"] = "gcs"
+        if gcs_bucket:
+            metadata["storage_bucket"] = gcs_bucket
+        if gcs_file_path:
+            metadata["storage_path"] = gcs_file_path
+
         # Add file metadata if available
         if file_metadata:
             # Prefix file metadata keys to avoid conflicts
@@ -215,7 +226,9 @@ def process_text_file(
     filename: str,
     jwt: str,
     chunk_size: int = 200,
-    overlap: int = 50
+    overlap: int = 50,
+    gcs_bucket: str = None,
+    gcs_file_path: str = None
 ) -> Dict[str, Any]:
     """
     Process a single text/markdown file: validate, chunk, and prepare for upload.
@@ -274,7 +287,8 @@ def process_text_file(
             print(f"Processing chunk {i + 1} of {len(chunks_with_metadata)} for {filename}")
             
             vector_data = generate_embedding_for_chunk(
-                chunks_with_metadata[i], i, filename, jwt, metadata
+                chunks_with_metadata[i], i, filename, jwt, metadata,
+                gcs_bucket=gcs_bucket, gcs_file_path=gcs_file_path
             )
             
             if vector_data:

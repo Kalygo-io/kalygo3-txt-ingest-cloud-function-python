@@ -4,4 +4,7 @@ google-cloud-secret-manager==2.*
 pinecone-client==5.*
 requests==2.*
 cloudevents==1.*
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+cryptography>=42.0.0
 
