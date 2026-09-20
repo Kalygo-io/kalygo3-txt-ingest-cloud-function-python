@@ -19,10 +19,15 @@ def fetch_embedding(jwt: str, text: str) -> List[float]:
         List[float]: The embedding vector
     """
     try:
-        api_url = EnvironmentVariables.EMBEDDINGS_API_URL or \
-                  os.getenv('EMBEDDINGS_API_URL') or \
-                  'https://kalygo-embeddings-service-830723611668.us-east1.run.app/huggingface/embedding'
-        
+        # EMBEDDINGS_API_URL is the service's base URL (same convention as the
+        # agent API and the qna ingest function); the endpoint path is appended here
+        base_url = EnvironmentVariables.EMBEDDINGS_API_URL or \
+                   os.getenv('EMBEDDINGS_API_URL')
+
+        api_url = base_url.rstrip('/')
+        if not api_url.endswith('/huggingface/embedding'):
+            api_url = f'{api_url}/huggingface/embedding'
+
         response = requests.post(
             api_url,
             json={"input": text},
