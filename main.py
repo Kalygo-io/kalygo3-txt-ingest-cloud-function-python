@@ -85,7 +85,9 @@ def _process_message(message: str, attributes: dict) -> ProcessingResult:
         filename,
         jwt,
         gcs_bucket=gcs_bucket,
-        gcs_file_path=gcs_file_path
+        gcs_file_path=gcs_file_path,
+        user_id=user_id,
+        user_email=user_email
     )
     vectors = text_result["vectors"]
     successful_rows = text_result["successful_chunks"]

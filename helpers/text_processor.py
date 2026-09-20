@@ -152,18 +152,24 @@ def generate_embedding_for_chunk(
     jwt: str,
     file_metadata: Dict[str, str] = None,
     gcs_bucket: str = None,
-    gcs_file_path: str = None
+    gcs_file_path: str = None,
+    user_id: str = None,
+    user_email: str = None,
+    uploaded_at: str = None
 ) -> VectorData | None:
     """
     Generate embedding for a single chunk and prepare vector data for storage.
-    
+
     Args:
         chunk: Text chunk to process
         chunk_index: Zero-based index of the chunk
         filename: Name of the source file
         jwt: JWT token for embedding API
         file_metadata: Optional file metadata from YAML front matter
-    
+        user_id: ID of the uploading user
+        user_email: Email of the uploading user
+        uploaded_at: Upload timestamp (epoch-ms string), shared by all chunks of the file
+
     Returns:
         VectorData object or None if processing failed
     """
@@ -182,25 +188,35 @@ def generate_embedding_for_chunk(
         chunk_id_content = f"{filename}_{chunk_index + 1}_{chunk[:50]}"
         chunk_id = hashlib.sha256(chunk_id_content.encode()).hexdigest()
         
-        # Prepare base metadata
+        uploaded_at = uploaded_at or str(int(time.time() * 1000))
+        file_metadata = file_metadata or {}
+
+        # Prepare base metadata. The shared keys (filename, user_*, upload_timestamp,
+        # created_at, last_edited_at, storage_*) match the qna ingest function's shape,
+        # which is what the API's vector store file listing reads.
         metadata: Dict[str, Any] = {
             "filename": filename,
             "chunkId": chunk_index + 1,  # 1-based for simplicity and intuition
             "content": chunk,
             "chunkSizeTokens": len(chunk.split()),  # Approximate token count
-            "uploadTimestamp": str(int(time.time() * 1000)),
+            "uploadTimestamp": uploaded_at,  # Read by the reranking UI
             "chunkNumber": chunk_index + 1,
-            "totalChunks": 0  # Will be set later
+            "totalChunks": 0,  # Will be set later
+            "user_id": user_id,
+            "user_email": user_email,
+            "upload_timestamp": uploaded_at,
+            # Sourced from the file's YAML front matter when present ('' otherwise,
+            # same as qna rows without these columns)
+            "created_at": file_metadata.get("created_at", ""),
+            "last_edited_at": file_metadata.get("last_edited_at", ""),
+            # Provider-agnostic pointer back to the original source document.
+            "storage_provider": "gcs" if (gcs_bucket or gcs_file_path) else None,
+            "storage_bucket": gcs_bucket,
+            "storage_path": gcs_file_path,
         }
 
-        # Provider-agnostic pointer back to the original source document
-        # (Pinecone rejects nulls, so only set keys we actually have).
-        if gcs_bucket or gcs_file_path:
-            metadata["storage_provider"] = "gcs"
-        if gcs_bucket:
-            metadata["storage_bucket"] = gcs_bucket
-        if gcs_file_path:
-            metadata["storage_path"] = gcs_file_path
+        # Filter out None values (Pinecone doesn't accept null metadata values)
+        metadata = {k: v for k, v in metadata.items() if v is not None}
 
         # Add file metadata if available
         if file_metadata:
@@ -228,18 +244,22 @@ def process_text_file(
     chunk_size: int = 200,
     overlap: int = 50,
     gcs_bucket: str = None,
-    gcs_file_path: str = None
+    gcs_file_path: str = None,
+    user_id: str = None,
+    user_email: str = None
 ) -> Dict[str, Any]:
     """
     Process a single text/markdown file: validate, chunk, and prepare for upload.
-    
+
     Args:
         content: File content as string
         filename: Name of the file
         jwt: JWT token for embedding API
         chunk_size: Number of words per chunk (default: 200)
         overlap: Number of overlapping words between chunks (default: 50)
-    
+        user_id: ID of the uploading user
+        user_email: Email of the uploading user
+
     Returns:
         Dictionary with 'vectors', 'successful_chunks', and 'failed_chunks'
     """
@@ -282,13 +302,17 @@ def process_text_file(
         vectors: List[VectorData] = []
         successful_chunks = 0
         failed_chunks = 0
-        
+
+        # One upload timestamp for the whole file so all its chunks agree
+        uploaded_at = str(int(time.time() * 1000))  # Milliseconds timestamp
+
         for i in range(len(chunks_with_metadata)):
             print(f"Processing chunk {i + 1} of {len(chunks_with_metadata)} for {filename}")
-            
+
             vector_data = generate_embedding_for_chunk(
                 chunks_with_metadata[i], i, filename, jwt, metadata,
-                gcs_bucket=gcs_bucket, gcs_file_path=gcs_file_path
+                gcs_bucket=gcs_bucket, gcs_file_path=gcs_file_path,
+                user_id=user_id, user_email=user_email, uploaded_at=uploaded_at
             )
             
             if vector_data:
