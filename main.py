@@ -5,7 +5,7 @@ from flask import Request
 from cloudevents.http import CloudEvent
 from helpers.gcs import download_file_from_gcs, file_exists_in_gcs, get_storage_instance_for_account
 from helpers.text_processor import process_text_file
-from helpers.pinecone_helper import upsert_vectors, ProcessingResult
+from helpers.pinecone_helper import upsert_vectors, pinecone_api_key_for_account, ProcessingResult
 from helpers.get_secret import get_secret
 from singletons.environment_variables import EnvironmentVariables
 
@@ -29,6 +29,7 @@ def _process_message(message: str, attributes: dict) -> ProcessingResult:
     user_id = parsed_message.get("user_id", "")
     user_email = parsed_message.get("user_email", "")
     namespace = parsed_message.get("namespace", "reranking")
+    index_name = parsed_message.get("index_name")
     upload_timestamp = parsed_message.get("upload_timestamp", "")
     processing_status = parsed_message.get("processing_status", "")
     jwt = parsed_message.get("jwt")
@@ -54,6 +55,10 @@ def _process_message(message: str, attributes: dict) -> ProcessingResult:
         except (TypeError, ValueError):
             account_id_for_gcs = None
     account_storage_client = get_storage_instance_for_account(account_id_for_gcs)
+
+    # Resolve the account's own Pinecone key so vectors land in the same
+    # Pinecone project the API reads from (fail before spending time on embeddings).
+    pinecone_api_key = pinecone_api_key_for_account(account_id_for_gcs)
 
     # Step 1: Download file from GCS
     print(f"Step 1: Downloading file from GCS: gs://{gcs_bucket}/{gcs_file_path}")
@@ -90,7 +95,7 @@ def _process_message(message: str, attributes: dict) -> ProcessingResult:
     # Step 3: Insert embeddings into Pinecone
     print(f"Step 3: Inserting {len(vectors)} vectors into Pinecone")
     if vectors:
-        upsert_vectors(vectors, namespace)
+        upsert_vectors(vectors, namespace, index_name, pinecone_api_key)
     
     # Prepare result
     result = ProcessingResult(
