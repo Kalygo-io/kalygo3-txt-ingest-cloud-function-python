@@ -7,13 +7,13 @@ from typing import Optional
 # Cache for secrets to avoid repeated API calls
 _secrets_cache: dict[str, str] = {}
 
-def get_secret(secret_name: str, project_id: str = "830723611668") -> str:
+def get_secret(secret_name: str, project_id: str = "command-labs") -> str:
     """
     Retrieve a secret from Google Secret Manager.
-    
+
     Args:
         secret_name: Name of the secret to retrieve
-        project_id: GCP project ID (default: 830723611668)
+        project_id: GCP project ID (default: command-labs)
     
     Returns:
         The secret value as a string
