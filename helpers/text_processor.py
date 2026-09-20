@@ -3,6 +3,7 @@ Helper functions for processing text and markdown files.
 """
 import hashlib
 import time
+from datetime import datetime, timezone
 from typing import Dict, List, Tuple, Any
 from helpers.embedding import fetch_embedding
 from helpers.pinecone_helper import VectorData
@@ -191,6 +192,12 @@ def generate_embedding_for_chunk(
         uploaded_at = uploaded_at or str(int(time.time() * 1000))
         file_metadata = file_metadata or {}
 
+        # A txt/md file has no per-row created_at/last_edited_at columns like a qna
+        # CSV, so unless its YAML front matter declares them, use the upload date
+        # (UTC) in the same M/D/YYYY format the qna CSVs use.
+        upload_date = datetime.fromtimestamp(int(uploaded_at) / 1000, tz=timezone.utc)
+        upload_date_str = f"{upload_date.month}/{upload_date.day}/{upload_date.year}"
+
         # Prepare base metadata. The shared keys (filename, user_*, upload_timestamp,
         # created_at, last_edited_at, storage_*) match the qna ingest function's shape,
         # which is what the API's vector store file listing reads.
@@ -205,10 +212,8 @@ def generate_embedding_for_chunk(
             "user_id": user_id,
             "user_email": user_email,
             "upload_timestamp": uploaded_at,
-            # Sourced from the file's YAML front matter when present ('' otherwise,
-            # same as qna rows without these columns)
-            "created_at": file_metadata.get("created_at", ""),
-            "last_edited_at": file_metadata.get("last_edited_at", ""),
+            "created_at": file_metadata.get("created_at") or upload_date_str,
+            "last_edited_at": file_metadata.get("last_edited_at") or upload_date_str,
             # Provider-agnostic pointer back to the original source document.
             "storage_provider": "gcs" if (gcs_bucket or gcs_file_path) else None,
             "storage_bucket": gcs_bucket,
