@@ -33,7 +33,7 @@ def fetch_embedding(jwt: str, text: str) -> List[float]:
             json={"input": text},
             headers={
                 'Content-Type': 'application/json',
-                'Cookie': f'jwt={jwt}'
+                'Authorization': f'Bearer {jwt}'
             },
             timeout=120  # 120 second timeout
         )
